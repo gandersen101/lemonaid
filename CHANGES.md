@@ -1,3 +1,15 @@
+# 0.21.0 (2026-09-03)
+
+#### Fixed
+
+- **Arrow keys cross into the non-switchable list.** A focused table binds the arrow keys itself, so it consumed the key before the cursor could cross, and the cursor stopped at the last switchable session. Now down past the last switchable session enters the non-switchable list, and up from its top returns. The move is handled before the table sees the key.
+
+#### Added
+
+- **Emacs-style up/down keys.** `up_down` now also takes a comma-separated pair of key names, so `up_down = "ctrl+p,ctrl+n"` binds emacs navigation. The two-character vim form (`"kj"`) still works.
+
+- **The command palette moved to `Ctrl+\`.** Textual bound its palette to `Ctrl+p`, which is also emacs "previous line". The palette now opens on `Ctrl+\`, which frees `Ctrl+p` for navigation.
+
 # 0.20.0 (2026-08-26)
 
 #### Added

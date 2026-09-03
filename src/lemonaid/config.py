@@ -65,9 +65,12 @@ class KeybindingsConfig:
     Each command field is a string where each character is a valid key binding.
     For example, quit="qQ" means both 'q' and 'Q' will quit.
 
-    The up_down field is a 2-character string: up, down.
-    For vim: "kj", for Norman WASD-style: "ri".
-    Empty string means use default arrow keys only.
+    The up_down field sets extra up/down navigation keys, on top of the arrows.
+    Two forms work:
+    - Two characters, one per key: "kj" (vim), "ri" (Norman WASD-style).
+    - A comma-separated pair of key names, for keys that carry a modifier:
+      "ctrl+p,ctrl+n" (emacs).
+    An empty string means arrow keys only.
     """
 
     quit: str = "q"
@@ -93,7 +96,7 @@ class KeybindingsConfig:
     flip_position: str = "f"  # Move the scratch pane between top and left
     # Digits 1-9 then 0 switch to that row of the list, counting from the top.
     jump_by_number: bool = True
-    up_down: str = ""  # 2-char string: up, down (e.g., "kj" for vim)
+    up_down: str = ""  # extra up/down keys: "kj" (vim) or "ctrl+p,ctrl+n" (emacs)
 
 
 @dataclass

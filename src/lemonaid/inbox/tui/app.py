@@ -188,6 +188,37 @@ def _build_bindings(keys: str, action: str, label: str, show: bool = True) -> li
     return bindings
 
 
+# The inbox tables that up/down cross-navigation applies to. Naming them keeps
+# the on_key handler from acting on a DataTable inside a modal screen.
+_INBOX_TABLE_IDS = frozenset(
+    {"main_table", "other_sources_table", "history_table", "snoozed_table"}
+)
+
+
+def _parse_up_down(spec: str) -> tuple[str, str] | None:
+    """Parse the up_down keybinding config into (up_key, down_key), or None.
+
+    Two forms are accepted:
+    - A comma-separated pair of key names, for keys that carry a modifier:
+      "ctrl+p,ctrl+n" (emacs) gives up="ctrl+p", down="ctrl+n".
+    - A two-character string, one character per key: "kj" (vim) gives
+      up="k", down="j".
+
+    An empty or malformed value returns None.
+    """
+    spec = spec.strip()
+    if not spec:
+        return None
+    if "," in spec:
+        parts = [part.strip() for part in spec.split(",")]
+        if len(parts) == 2 and all(parts):
+            return parts[0], parts[1]
+        return None
+    if len(spec) == 2:
+        return spec[0], spec[1]
+    return None
+
+
 def _as_card(
     cells: list[Text],
     width: int,
@@ -487,6 +518,11 @@ def _stretch_columns(
 class LemonaidApp(App):
     """Lemonaid TUI - attention inbox for your lemons."""
 
+    # Textual binds Ctrl+p to the command palette by default. Ctrl+p is also
+    # emacs "previous line", so move the palette off it and onto Ctrl+\ to free
+    # the key for up/down navigation.
+    COMMAND_PALETTE_BINDING = "ctrl+backslash"
+
     CSS = """
     #main_table {
         height: 1fr;
@@ -653,15 +689,18 @@ class LemonaidApp(App):
             for digit in JUMP_DIGITS:
                 self.bind(digit, f"jump_to_number('{digit}')", description="Jump", show=False)
 
-        # Cross-table arrow navigation (always active)
-        self.bind("up", "cursor_up", description="Up", show=False)
-        self.bind("down", "cursor_down", description="Down", show=False)
-
-        # Additional up/down keys (vim-style, if configured)
-        if len(kb.up_down) == 2:
-            up, down = kb.up_down
-            self.bind(up, "cursor_up", description="Up", show=False)
-            self.bind(down, "cursor_down", description="Down", show=False)
+        # Up/down navigation. Handled in on_key rather than as bindings: a
+        # focused DataTable binds the arrow keys itself and would consume them
+        # before an app-level binding could cross between the two tables. The
+        # arrows always work; up_down adds vim ("kj") or emacs ("ctrl+p,ctrl+n")
+        # keys on top.
+        self._up_keys = {"up"}
+        self._down_keys = {"down"}
+        parsed = _parse_up_down(kb.up_down)
+        if parsed:
+            up_key, down_key = parsed
+            self._up_keys.add(up_key)
+            self._down_keys.add(down_key)
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -1086,10 +1125,7 @@ class LemonaidApp(App):
         focused = self._focused_ttys()
         rebuilt = _sync_rows(
             main_table,
-            [
-                self._active_row(n, i, focused, pinned)
-                for i, n in enumerate(current_notifications)
-            ],
+            [self._active_row(n, i, focused, pinned) for i, n in enumerate(current_notifications)],
             self._card_width(),
             self._card_shape(),
             GUTTER_WIDTH,
@@ -1681,27 +1717,39 @@ class LemonaidApp(App):
             self._refresh_history()
 
     def on_key(self, event: events.Key) -> None:
-        """Handle special keys in the filter input."""
-        if not (isinstance(self.focused, Input) and self.focused.id == "history_filter"):
+        """Handle the filter input's keys and cross-table up/down navigation."""
+        focused = self.focused
+
+        # History filter input: down/enter move to the table, escape clears.
+        if isinstance(focused, Input) and focused.id == "history_filter":
+            if event.key in ("down", "enter"):
+                event.prevent_default()
+                event.stop()
+                self.query_one("#history_table", DataTable).focus()
+            elif event.key == "escape":
+                event.prevent_default()
+                event.stop()
+                self._history_filter = ""
+                history_filter = self.query_one("#history_filter", Input)
+                history_filter.value = ""
+                history_filter.display = False
+                self._refresh_history()
+                self.query_one("#history_table", DataTable).focus()
             return
 
-        # Down/Enter: keep filter active, move focus to table for navigation
-        if event.key in ("down", "enter"):
-            event.prevent_default()
-            event.stop()
-            self.query_one("#history_table", DataTable).focus()
-            return
-
-        # Escape: clear filter, hide it, focus table
-        if event.key == "escape":
-            event.prevent_default()
-            event.stop()
-            self._history_filter = ""
-            history_filter = self.query_one("#history_filter", Input)
-            history_filter.value = ""
-            history_filter.display = False
-            self._refresh_history()
-            self.query_one("#history_table", DataTable).focus()
+        # Up/down navigation, routed through the crossover-aware actions. on_key
+        # runs before a focused DataTable's own arrow binding, so this can move
+        # the cursor between the main and non-switchable tables. Handling normal
+        # movement here too keeps every up/down key on one path.
+        if isinstance(focused, DataTable) and focused.id in _INBOX_TABLE_IDS:
+            if event.key in self._down_keys:
+                event.prevent_default()
+                event.stop()
+                self.action_cursor_down()
+            elif event.key in self._up_keys:
+                event.prevent_default()
+                event.stop()
+                self.action_cursor_up()
 
     def _focused_table(self) -> DataTable:
         focused = self.focused

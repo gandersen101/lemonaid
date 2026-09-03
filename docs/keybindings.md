@@ -116,7 +116,7 @@ tmux_resume = "T"  # spawn tmux session from history
 save_size = "H"  # save scratch pane size (follow mode)
 flip_position = "f"  # move the scratch pane between top and left
 jump_by_number = true  # digits 1-9,0 switch to that row
-up_down = ""  # arrow key alternatives (see below)
+up_down = ""  # extra up/down keys (see below)
 ```
 
 For example, to use `o` for selecting sessions:
@@ -143,9 +143,12 @@ quit = "qQ"  # both 'q' and 'Q' will quit
 
 The footer shows the first configured key.
 
-### Arrow key alternatives
+### Extra up/down keys
 
-The `up_down` field accepts a 2-character string for up/down navigation:
+The `up_down` field adds up/down navigation keys, on top of the arrows. Two
+forms work.
+
+Two characters, one per key:
 
 ```toml
 # Vim-style
@@ -155,10 +158,22 @@ up_down = "kj"
 up_down = "ri"
 ```
 
-Leave empty (the default) to use only arrow keys.
+A comma-separated pair of key names, for keys that carry a modifier:
+
+```toml
+# Emacs-style
+up_down = "ctrl+p,ctrl+n"
+```
+
+Leave empty (the default) to use only the arrow keys.
+
+Up and down move between the two tables. Press down past the last switchable
+session to enter the non-switchable list. Press up from its top to return.
 
 ## Non-configurable keys
 
 - `Enter` - built into the DataTable widget
 - `Escape` - always bound to quit (in addition to configured quit key)
 - `P` - patch Claude binary (only shown when Claude is unpatched)
+- `Ctrl+\` - open the command palette (Textual's built-in). It moved off
+  `Ctrl+p`, which is now free for up/down navigation (see `up_down`).
