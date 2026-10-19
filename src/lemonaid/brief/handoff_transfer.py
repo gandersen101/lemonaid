@@ -46,6 +46,33 @@ def _move_manual_state(conn: sqlite3.Connection, source: str, target: str) -> No
         )
 
 
+def move(conn: sqlite3.Connection, path: str, source: str, target: str, reason: str) -> None:
+    """Give *target* the brief at *path* and *source*'s manual inbox state, then archive *source*.
+
+    Runs in the caller's transaction. Both channels stay linked to the brief, so a later
+    resume of either one reclaims it.
+    """
+    _move_manual_state(conn, source, target)
+    conn.execute("DELETE FROM session_briefs WHERE channel = ?", (target,))
+    conn.execute(
+        "UPDATE session_briefs SET channel = ?, attached_at = ? WHERE path = ?",
+        (target, time.time(), path),
+    )
+    db.archive_channel(conn, source, reason, commit=False)
+    generation = conn.execute(
+        "SELECT COALESCE(MAX(generation), 0) FROM brief_handoff_sessions WHERE path = ?",
+        (path,),
+    ).fetchone()[0]
+    conn.execute(
+        "INSERT OR IGNORE INTO brief_handoff_sessions VALUES (?, ?, ?)",
+        (path, source, generation),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO brief_handoff_sessions VALUES (?, ?, ?)",
+        (path, target, generation + 1),
+    )
+
+
 def transfer(conn: sqlite3.Connection, token: str) -> None:
     conn.execute("BEGIN IMMEDIATE")
     try:
@@ -63,25 +90,7 @@ def transfer(conn: sqlite3.Connection, token: str) -> None:
         if holder is None or holder["channel"] != row["source"]:
             raise ValueError("The outgoing channel no longer holds this brief")
 
-        _move_manual_state(conn, row["source"], row["target"])
-        conn.execute("DELETE FROM session_briefs WHERE channel = ?", (row["target"],))
-        conn.execute(
-            "UPDATE session_briefs SET channel = ?, attached_at = ? WHERE path = ?",
-            (row["target"], time.time(), row["path"]),
-        )
-        db.archive_channel(conn, row["source"], "brief-handoff-transfer", commit=False)
-        generation = conn.execute(
-            "SELECT COALESCE(MAX(generation), 0) FROM brief_handoff_sessions WHERE path = ?",
-            (row["path"],),
-        ).fetchone()[0]
-        conn.execute(
-            "INSERT OR IGNORE INTO brief_handoff_sessions VALUES (?, ?, ?)",
-            (row["path"], row["source"], generation),
-        )
-        conn.execute(
-            "INSERT OR REPLACE INTO brief_handoff_sessions VALUES (?, ?, ?)",
-            (row["path"], row["target"], generation + 1),
-        )
+        move(conn, row["path"], row["source"], row["target"], "brief-handoff-transfer")
         conn.execute("UPDATE brief_handoffs SET phase = 'transferred' WHERE token = ?", (token,))
         conn.commit()
     except BaseException:

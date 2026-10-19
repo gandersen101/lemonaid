@@ -523,6 +523,7 @@ lemonaid place open feat/thing --brief <file> --parent self  # and record yourse
 lemonaid lemon children --self --json          # your children, with their brief Status:
 lemonaid brief children --self                 # your children's places, sessions, PRs, and cleanup
 lemonaid brief handoff --to codex               # replace this harness in its tmux pane
+lemonaid brief handoff --to claude              # from a Claude lemon: a fresh Claude session there
 lemonaid brief handoff --to claude --brief FILE # request a handoff for another lemon's brief
 lemonaid brief handoff --to codex --brief FILE  # explicitly select a source for staged handoff
 lemonaid brief handoff status TOKEN             # phase, channels, missing check, exact user phrases
@@ -535,7 +536,8 @@ Parent links are between Lemon-IDs; see `docs/lineage.md`.
 ### Harness handoff
 
 `brief handoff --to claude|codex` needs an attached brief and a live outgoing
-inbox row. It sends the outgoing lemon a request with a random token.
+inbox row. The destination can be the lemon's own harness: the replacement is then
+a fresh session of that harness, with a new context, in the same pane. It sends the outgoing lemon a request with a random token.
 The outgoing lemon writes a fresh `## Handoff` section with at most five bullets,
 using its current brief without rereading files when that brief is already current.
 It stops its waiters and ends that section with `Handoff-Ready: TOKEN` on its
@@ -643,6 +645,32 @@ channel still has a placeholder title; a title supplied by the new harness wins.
 Both backend transcripts and session IDs stay intact; resuming the old backend
 session by its original ID reclaims the brief and manual state without stopping
 the replacement session.
+
+### Fresh context after `/clear`
+
+`/clear` in Claude Code ends the session and starts a new one in the same process.
+lemonaid gives the new session the lemon, as a handoff does. Three hooks do this:
+`lemonaid claude hooks --session-end`, `lemonaid claude hooks` (its `SessionStart`
+hook registers the new session) and `lemonaid hooks install`.
+
+1. Claude runs `SessionEnd` with reason `clear`, and waits for it. The old row
+   records `exit_reason`.
+2. Claude starts the new session and runs both `SessionStart` hooks with source `clear`.
+3. `lemonaid hooks session-start` finds the last row that `clear` ended on the same tty
+   in the last minute. That row must not be archived, and it must hold a brief. An older
+   clear on the tty never counts.
+4. It waits up to three seconds for the new session's row. A brief that waits on the
+   window claims the new session first. Then one transaction moves the brief, the inbox
+   name, the pins, the emoji and an active snooze to the new session, and archives the
+   old row.
+5. The old push scout exits when its session loses the brief. The hook starts the new
+   session's scout and tells the new session where its brief is.
+
+Nothing moves while a handoff of the brief is pending, when the new session already has
+a brief, when the two rows record different tmux panes, or when the new row does not
+register within the three seconds. Then the old row
+keeps the brief, and `brief detach --channel <old channel>` and `brief attach --self`
+move it by hand. `--channel` accepts the whole session ID or its first 8 characters.
 
 ### Children and their cleanup
 

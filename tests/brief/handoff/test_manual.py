@@ -37,7 +37,7 @@ def _requested(conn, path):
 def test_source_without_tmux_uses_inbox_working_directory(setup, monkeypatch):
     conn, path = setup
     monkeypatch.setattr(handoff_tmux, "pane", lambda *_args: ("", ""))
-    source = handoff_coordinator.source(conn, "claude:old", "codex")
+    source = handoff_coordinator.source(conn, "claude:old")
     assert source == (path, "", "", "", "", str(path.parent))
 
 
@@ -57,7 +57,7 @@ def test_source_identifies_its_tty_with_other_panes_present(setup, monkeypatch):
     conn.commit()
     monkeypatch.setattr(handoff_tmux, "pane_for_tty", lambda *_: ("%2", "@2"))
     monkeypatch.setattr(handoff_tmux, "current_command", lambda *_: "claude")
-    assert handoff_coordinator.source(conn, "claude:old", "codex") == (
+    assert handoff_coordinator.source(conn, "claude:old") == (
         path,
         "work",
         "2",

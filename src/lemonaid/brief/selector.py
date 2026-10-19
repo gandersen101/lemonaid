@@ -18,6 +18,7 @@ import sqlite3
 import subprocess
 
 from ..inbox import db
+from ..inbox.channel import channel_id
 from ..lemon_watchers import watcher
 from . import lemon, session
 
@@ -165,8 +166,24 @@ def _session(conn: sqlite3.Connection, spec: str) -> tuple[Selected | None, str]
     return None, f"Several lemons in {tmux_session!r}; name one of {windows}"
 
 
+def _by_whole_session_id(conn: sqlite3.Connection, channel: str) -> db.Notification | None:
+    """The row for *channel* written with the whole session ID, where the inbox keeps 8 characters.
+
+    A Claude channel is `claude:` and the first 8 characters of the session ID, but
+    the harness and its transcripts show the whole ID.
+    """
+    backend, _, session_id = channel.partition(":")
+    if len(session_id) <= 8:
+        return None
+
+    found = db.get_by_channel(conn, channel_id(backend, session_id), unread_only=False)
+    return found if found and found.metadata.get("session_id", session_id) == session_id else None
+
+
 def _channel(conn: sqlite3.Connection, channel: str) -> tuple[Selected | None, str]:
-    found = db.get_by_channel(conn, channel, unread_only=False)
+    found = db.get_by_channel(conn, channel, unread_only=False) or _by_whole_session_id(
+        conn, channel
+    )
     return (_selected(found), "") if found else (None, f"No inbox session on channel {channel!r}")
 
 
@@ -202,5 +219,9 @@ def add_arguments(parser: argparse.ArgumentParser, required: bool = True) -> Non
         metavar="SESSION[:WINDOW]",
         help="The lemon in this tmux session; name the window when it holds several",
     )
-    target.add_argument("--channel", help="An inbox channel, from `inbox list --json`")
+    target.add_argument(
+        "--channel",
+        help="An inbox channel, from `inbox list --json`; a Claude channel may give the whole "
+        "session ID",
+    )
     target.add_argument("--id", type=int, help="A notification id, from `inbox list --json`")

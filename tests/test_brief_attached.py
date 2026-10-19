@@ -78,6 +78,29 @@ def test_attaching_a_brief_elsewhere_moves_it(capsys):
     assert _attached_to("claude:a") is None
 
 
+def test_detach_takes_a_claude_channel_with_the_whole_session_id(capsys):
+    whole = "6f3198c7-1111-4222-8333-444444444444"
+    with db.connect() as conn:
+        db.add(conn, "claude:6f3198c7", "", metadata={"session_id": whole})
+    _run(capsys, "attach", "--channel", "claude:6f3198c7", str(_brief("task")))
+
+    detached = _run(capsys, "detach", "--channel", f"claude:{whole}")
+
+    assert detached["detached"]
+    assert _attached_to("claude:6f3198c7") is None
+
+
+def test_a_whole_session_id_must_match_the_one_the_row_records(capsys):
+    with db.connect() as conn:
+        db.add(conn, "claude:6f3198c7", "", metadata={"session_id": "6f3198c7-other"})
+    _run(capsys, "attach", "--channel", "claude:6f3198c7", str(_brief("task")))
+
+    refused = _run(capsys, "detach", "--channel", "claude:6f3198c7-1111")
+
+    assert "No inbox session" in refused["error"]
+    assert _attached_to("claude:6f3198c7") == _brief("task")
+
+
 def test_attach_backfills_an_id_and_id_command_reports_it(capsys):
     _lemon("claude:mine", "work", "2", 1)
     path = _brief("mine")

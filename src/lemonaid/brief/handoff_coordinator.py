@@ -17,7 +17,7 @@ from . import (
 )
 
 
-def source(conn, channel: str, harness: str) -> tuple[Path, str, str, str, str, str]:
+def source(conn, channel: str) -> tuple[Path, str, str, str, str, str]:
     path = attached.by_channel(conn, [channel]).get(channel)
     if path is None:
         raise ValueError("No brief is attached to this lemon")
@@ -43,9 +43,6 @@ def source(conn, channel: str, harness: str) -> tuple[Path, str, str, str, str, 
         raise ValueError("Could not inspect the outgoing pane's command")
     if not pane and (not current_command or not Path(current_command).is_dir()):
         raise ValueError("The outgoing lemon's working directory is unavailable")
-
-    if channel.startswith(harness + ":"):
-        raise ValueError("The destination harness is already running this brief")
 
     return path, session, index, window_id, pane, current_command
 

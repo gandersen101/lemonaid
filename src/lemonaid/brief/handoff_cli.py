@@ -162,7 +162,7 @@ def _cmd(args: argparse.Namespace) -> None:
                 else:
                     channel = lemon.self_channel(conn)
                 path, session, index, window_id, pane_id, source_command = (
-                    handoff_coordinator.source(conn, channel, backend)
+                    handoff_coordinator.source(conn, channel)
                 )
                 notification = db.get_by_channel(conn, channel, unread_only=False)
                 if same_terminal:

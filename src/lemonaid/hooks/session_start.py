@@ -2,12 +2,50 @@
 
 import json
 import sys
+import time
 from pathlib import Path
 
 from .. import brief
+from ..brief import handoff_clear
 from ..claude import waiter_check
+from ..inbox import db
+from ..inbox.channel import channel_id
+from ..lemon_watchers import get_tty
+from ..log import get_logger
 from ..watch import own_edits, push_scout
 from . import session_gate
+
+_log = get_logger("hooks.session_start")
+
+# `lemonaid claude session-start` registers the new session's row; Claude runs it beside this hook.
+_ROW_WAIT_SECONDS = 3
+
+
+def _carry_across_clear(session_id: str) -> str:
+    """The channel that `/clear` ended, once its brief belongs to *session_id*; else ""."""
+    tty = get_tty()
+    if not tty:
+        return ""
+
+    channel = channel_id("claude", session_id)
+    with db.connect() as conn:
+        found = handoff_clear.cleared(conn, channel, tty, time.time())
+        if found is None:
+            return ""
+
+        source, path = found
+        deadline = time.monotonic() + _ROW_WAIT_SECONDS
+        while (
+            db.get_by_channel(conn, channel, unread_only=False) is None
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.1)
+        if not handoff_clear.carry(conn, source, path, channel):
+            _log.warning("kept %s on %s after /clear; %s took no brief", path, source, channel)
+            return ""
+
+    _log.info("moved %s from %s to %s after /clear", path, source, channel)
+    return source
 
 
 def _pushed(path: Path, session_id: str) -> bool:
@@ -37,15 +75,26 @@ def _not_pushing(path: Path, session_id: str, harness: str) -> str:
 
 
 def context(data: dict, harness: str) -> str:
+    session = data.get("session_id")
+    cleared = (
+        _carry_across_clear(session)
+        if harness == "claude" and session and data.get("source") == "clear"
+        else ""
+    )
     path = waiter_check.attached_brief(data, harness)
-    if session := data.get("session_id"):
+    if session:
         session_gate.mark(own_edits.root(), f"{harness}-{session}", path)
     if path is None:
         return ""
 
+    moved = (
+        f"lemonaid moved your brief and inbox name here from {cleared}, the session before /clear. "
+        if cleared
+        else ""
+    )
     if harness == "claude" and _pushed(path, session or ""):
         return (
-            f"Your brief is {path}. Read it and the current state of your work first. "
+            moved + f"Your brief is {path}. Read it and the current state of your work first. "
             "lemonaid is watching for you: it reads your Watching section, PRs, Docs, children "
             "and inbox, and pushes every pending change into this session together. Handle "
             "each batch as it arrives. "
@@ -53,7 +102,8 @@ def context(data: dict, harness: str) -> str:
         )
 
     return (
-        _not_pushing(path, session or "", harness)
+        moved
+        + _not_pushing(path, session or "", harness)
         + f"Your brief is {path}. Read it and the current state of your work first. "
         f"Check `lemonaid watch --self --status`; if none is running, {waiter_check.ARM[harness]} "
         "It reads your Watching section, PRs, Docs, children and inbox, reports every pending "
