@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from lemonaid.tmux import follow, scratch
+from lemonaid.tmux import follow, navigation, scratch
 from tests import tmux_hook_sync
 
 
@@ -340,6 +340,59 @@ def test_a_focused_slot_never_hands_focus_to_the_inbox(tmux):
 
     _assert_sane(tmux, pane)
     assert _main_pane(tmux, "a:w2")[3]
+
+
+def _press_back(run) -> str:
+    """What the `prefix + p` binding does, then the pane the client shows."""
+    session, here = run("list-clients", "-F", "#{session_name} #{pane_id}").stdout.split()
+    _, target = navigation.swap_back_location(session, here)
+    run("switch-client", "-t", target)
+    return run("list-clients", "-F", "#{pane_id}").stdout.strip()
+
+
+def test_back_from_a_switch_made_in_the_inbox_returns_to_the_pane_behind_it(tmux, monkeypatch):
+    """The inbox follows the client, so a back location naming it named
+    wherever the client already was."""
+    pane = _followed_pane(tmux)
+    tmux("select-window", "-t", "a:w2")
+    worked_in = _main_pane(tmux, "a:w2")[0]
+    lemon = tmux("display", "-p", "-t", "b:w1", "#{pane_id}").stdout.strip()
+    tmux("select-pane", "-t", pane)
+    monkeypatch.setenv("TMUX_PANE", pane)
+
+    assert navigation.switch_to_pane("b", lemon)
+
+    assert _press_back(tmux) == worked_in
+    assert _press_back(tmux) == lemon
+
+
+def test_back_from_a_switch_made_in_a_hidden_inbox_returns_to_the_pane_behind_it(tmux, monkeypatch):
+    """Without follow the inbox hides after a switch, and a back location
+    naming it took the client to the parking session."""
+    pane = _followed_pane(tmux, **{follow.FOLLOW_OPTION: "off"})
+    worked_in = tmux("display", "-p", "-t", "a:w1", "#{pane_id}").stdout.strip()
+    lemon = tmux("display", "-p", "-t", "b:w1", "#{pane_id}").stdout.strip()
+    assert scratch._show(pane, "58", "left", worked_in)
+    tmux("select-pane", "-t", pane)
+    monkeypatch.setenv("TMUX_PANE", pane)
+
+    assert navigation.switch_to_pane("b", lemon)
+    scratch._hide(pane)
+
+    assert _press_back(tmux) == worked_in
+    assert _press_back(tmux) == lemon
+
+
+def test_back_pressed_in_the_inbox_returns_to_the_pane_behind_it(tmux):
+    pane = _followed_pane(tmux)
+    tmux("select-window", "-t", "a:w2")
+    worked_in = _main_pane(tmux, "a:w2")[0]
+    lemon = tmux("display", "-p", "-t", "b:w1", "#{pane_id}").stdout.strip()
+    navigation.save_back_location("b", lemon)
+    tmux("select-pane", "-t", pane)
+
+    assert _press_back(tmux) == lemon
+    assert _press_back(tmux) == worked_in
 
 
 def test_a_top_pane_is_measured_in_rows(tmux):

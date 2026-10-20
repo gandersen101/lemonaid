@@ -136,6 +136,10 @@ When you press `prefix + p`:
 
 Because the swap is atomic, pressing `prefix + p` repeatedly toggles between two locations.
 
+The scratch inbox moves with you or hides, so a return to it would go nowhere
+useful. When you switch or press `prefix + p` from the inbox, Lemonaid saves the
+pane you used before you focused the inbox.
+
 ## CLI commands
 
 - `lemonaid tmux back` - Switch to the saved back location

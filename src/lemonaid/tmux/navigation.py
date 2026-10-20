@@ -408,6 +408,56 @@ def load_back_location() -> tuple[str | None, str | None]:
         return None, None
 
 
+def _pane_behind_scratch(pane_id: str) -> tuple[str, str] | None:
+    """The session and pane behind *pane_id* when it is the scratch inbox, else None.
+
+    The window's last pane is the one the user left when focus moved into the
+    inbox, as in `focused_ttys`.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "tmux",
+                "list-panes",
+                "-t",
+                pane_id,
+                "-F",
+                "#{pane_id}|#{pane_last}|#{@lemonaid_scratch}|#{session_name}",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=_QUERY_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+        _log.warning("could not list the panes beside %s: %s", pane_id, e)
+        return None
+
+    panes = [parts for line in result.stdout.splitlines() if len(parts := line.split("|", 3)) == 4]
+    if not any(pane == pane_id and scratch == "1" for pane, _, scratch, _ in panes):
+        return None
+
+    return next(
+        (
+            (session, pane)
+            for pane, last, scratch, session in panes
+            if last == "1" and scratch != "1"
+        ),
+        None,
+    )
+
+
+def _back_location(session: str, pane_id: str) -> tuple[str, str]:
+    """Where a return to *pane_id* should go.
+
+    The scratch inbox follows the client from window to window, or hides in its
+    own session, so a return to it would stay where the user is or leave for the
+    parking session. The pane behind it is where the user was working. With none
+    behind it, the inbox is all there is.
+    """
+    return _pane_behind_scratch(pane_id) or (session, pane_id)
+
+
 def switch_to_pane(session: str, pane_id: str, save_current: bool = True) -> bool:
     """
     Switch to a tmux session and pane.
@@ -423,7 +473,7 @@ def switch_to_pane(session: str, pane_id: str, save_current: bool = True) -> boo
     if save_current:
         current_session, current_pane = get_current_location()
         if current_session and current_pane:
-            save_back_location(current_session, current_pane)
+            save_back_location(*_back_location(current_session, current_pane))
 
     try:
         # Switch client to the target pane
@@ -457,6 +507,6 @@ def swap_back_location(current_session: str, current_pane_id: str) -> tuple[str 
     target_session, target_pane_id = load_back_location()
 
     # Save current as new back location (enables ping-pong)
-    save_back_location(current_session, current_pane_id)
+    save_back_location(*_back_location(current_session, current_pane_id))
 
     return target_session, target_pane_id
