@@ -24,7 +24,7 @@ def lemons(conn: sqlite3.Connection, active: "view.Active") -> list[pulls.Lemon]
             card.status,
             card.mid_turn,
             card.since,
-            channel in active.reviewers,
+            brief.identity.brief_description(names.get(channel, "")).startswith("review-"),
         )
         for channel, path in active.briefs.items()
         if (card := active.cards.get(channel))

@@ -64,7 +64,7 @@ def _switchable_from(active: "view.Active", source: str) -> "view.Active":
         rows=rows,
         cards={c: card for c, card in active.cards.items() if c in channels},
         briefs={c: path for c, path in active.briefs.items() if c in channels},
-        reviewers=active.reviewers & channels,
+        hidden_briefs=active.hidden_briefs & channels,
     )
 
 

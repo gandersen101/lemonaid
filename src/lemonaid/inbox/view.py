@@ -22,7 +22,7 @@ class Active:
     rows: list[db.Notification]  # in the inbox's own order
     cards: dict[str, brief_cards.CardBrief]  # by channel
     briefs: dict[str, Path]  # the attached brief's path, by channel
-    reviewers: frozenset[str]  # channels whose stable brief ID starts with review-
+    hidden_briefs: frozenset[str]  # channels whose brief says `Hidden: yes`
     memberships: dict[str, tuple[str, ...]] = dataclasses.field(
         default_factory=dict
     )  # each channel's group names, in group order
@@ -117,7 +117,7 @@ def inbox_rows(
     in_view: abc.Container[str],
     keep_hidden: bool = False,
 ) -> list[db.Notification]:
-    """Omit quiet reviewers unless the user chose them, they are deaf, or their status needs a band.
+    """Omit hidden lemons unless the user chose them, they are deaf, or their status needs a band.
 
     *keep_hidden* keeps every hidden lemon, for the caller to fold away.
     """
@@ -126,7 +126,7 @@ def inbox_rows(
         row
         for row in active.rows
         if keep_hidden
-        or row.channel not in active.reviewers
+        or row.channel not in active.hidden_briefs
         or row.channel in pinned
         or row.channel in in_view
         or row.channel in active.deaf
@@ -187,7 +187,7 @@ def ordered_active(
     attached = brief.attached.for_rows(conn, rows)
     cards = _cards(conn, rows, attached, cache, probe, mid_turn_working, now)
     brief_ids = brief.identity.by_channel(conn)
-    reviewers = frozenset(
+    hidden_briefs = frozenset(
         channel
         for channel, brief_id in brief_ids.items()
         if channel in attached and brief.hidden.is_hidden(attached[channel].read_text())
@@ -196,7 +196,7 @@ def ordered_active(
         order.by_status(rows, statuses(cards, rows), pins.pinned_positions(conn)),
         cards,
         attached,
-        reviewers,
+        hidden_briefs,
         _memberships(conn),
     )
 

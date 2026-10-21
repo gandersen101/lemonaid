@@ -10,7 +10,7 @@ import pytest
 from textual.coordinate import Coordinate
 from textual.widgets import DataTable
 
-from lemonaid.brief import attached, identity
+from lemonaid.brief import attached, hidden, identity
 from lemonaid.brief import store as brief_store
 from lemonaid.config import load_config
 from lemonaid.inbox import db, pins, presence, view
@@ -124,7 +124,7 @@ def test_quiet_reviewers_hide_even_when_unread_and_a_renamed_reviewer_stays_iden
             conn, "tmux", BriefCache(), presence.Probe(), False, time.time()
         )
 
-    assert active.reviewers == {reviewer}
+    assert active.hidden_briefs == {reviewer}
     assert [row.channel for row in view.inbox_rows(active, set(), set())] == [ordinary]
 
 
@@ -170,8 +170,21 @@ def test_a_reviewer_without_the_hidden_line_stays_visible():
             conn, "tmux", BriefCache(), presence.Probe(), False, time.time()
         )
 
-    assert active.reviewers == set()
+    assert active.hidden_briefs == set()
     assert [row.channel for row in view.inbox_rows(active, set(), set())] == [reviewer]
+
+
+def test_a_brief_with_the_hidden_line_hides_without_a_review_id():
+    with db.connect() as conn:
+        worker = _session(conn, "worker")
+        path = _brief(conn, worker, "waiting")
+        path.write_text(hidden.with_hidden(path.read_text(), True))
+        active = view.ordered_active(
+            conn, "tmux", BriefCache(), presence.Probe(), False, time.time()
+        )
+
+    assert active.hidden_briefs == {worker}
+    assert view.inbox_rows(active, set(), set()) == []
 
 
 def test_any_quiet_lemon_with_the_hidden_line_hides_whatever_its_parent():
@@ -182,7 +195,7 @@ def test_any_quiet_lemon_with_the_hidden_line_hides_whatever_its_parent():
             conn, "tmux", BriefCache(), presence.Probe(), False, time.time()
         )
 
-    assert active.reviewers == {reviewer}
+    assert active.hidden_briefs == {reviewer}
     assert view.inbox_rows(active, set(), set()) == []
 
 
